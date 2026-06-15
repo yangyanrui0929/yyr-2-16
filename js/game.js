@@ -38,10 +38,16 @@ class UndergroundRadioGame {
             equipment: JSON.parse(JSON.stringify(GameData.equipmentList)),
             districts: JSON.parse(JSON.stringify(GameData.districts)),
             schedule: {
-                morning: null,
-                afternoon: null,
-                evening: null
+                morning: [],
+                afternoon: [],
+                evening: []
             },
+            yesterdaySchedule: {
+                morning: [],
+                afternoon: [],
+                evening: []
+            },
+            maxProgramsPerSlot: 3,
             selectedBroadcast: null,
             currentQuestion: null,
             answeredQuestions: [],
@@ -274,38 +280,154 @@ class UndergroundRadioGame {
     renderSchedule() {
         ['morning', 'afternoon', 'evening'].forEach(slot => {
             const optionsContainer = document.getElementById(slot + 'Options');
+            const chainContainer = document.getElementById(slot + 'Chain');
             const slotDisplay = document.getElementById('slot' + slot.charAt(0).toUpperCase() + slot.slice(1));
             
             optionsContainer.innerHTML = '';
+            chainContainer.innerHTML = '';
+            
+            const currentChain = this.gameState.schedule[slot];
+            
+            if (currentChain.length === 0) {
+                chainContainer.innerHTML = '<div class="chain-empty">尚未安排节目，点击下方节目添加</div>';
+                slotDisplay.textContent = '未安排';
+            } else {
+                slotDisplay.textContent = `${currentChain.length}个节目`;
+                
+                currentChain.forEach((programId, index) => {
+                    const program = GameData.programTypes.find(p => p.id === programId);
+                    if (!program) return;
+                    
+                    const chainItem = document.createElement('div');
+                    chainItem.className = 'chain-item';
+                    
+                    let comboIndicator = '';
+                    if (index > 0) {
+                        const prevId = currentChain[index - 1];
+                        const combo = GameData.programCombos.find(c => c.prev === prevId && c.next === programId);
+                        if (combo) {
+                            comboIndicator = `<div class="chain-combo-badge" title="${combo.desc}">✨ 组合效果</div>`;
+                        }
+                    }
+                    
+                    chainItem.innerHTML = `
+                        <div class="chain-order">${index + 1}</div>
+                        <div class="chain-info">
+                            <div class="chain-name">${program.name}</div>
+                            <div class="chain-effects">⚡${program.power}</div>
+                            ${comboIndicator}
+                        </div>
+                        <div class="chain-actions">
+                            <button class="chain-btn" data-action="up" title="上移">↑</button>
+                            <button class="chain-btn" data-action="down" title="下移">↓</button>
+                            <button class="chain-btn remove" data-action="remove" title="移除">×</button>
+                        </div>
+                    `;
+                    
+                    chainItem.querySelector('[data-action="up"]').addEventListener('click', () => {
+                        this.moveProgram(slot, index, -1);
+                    });
+                    chainItem.querySelector('[data-action="down"]').addEventListener('click', () => {
+                        this.moveProgram(slot, index, 1);
+                    });
+                    chainItem.querySelector('[data-action="remove"]').addEventListener('click', () => {
+                        this.removeProgram(slot, index);
+                    });
+                    
+                    chainContainer.appendChild(chainItem);
+                });
+            }
             
             GameData.programTypes.forEach(program => {
                 const btn = document.createElement('button');
                 btn.className = 'program-btn';
-                if (this.gameState.schedule[slot] === program.id) {
+                
+                const isSelected = currentChain.includes(program.id);
+                if (isSelected) {
                     btn.classList.add('selected');
                 }
+                
+                const memory = this.getYesterdayMemory(program.id);
+                const risk = this.getRepeatRisk(slot, program.id);
+                const combo = this.getComboTendency(slot, program.id);
                 
                 const effectsText = Object.entries(program.effects)
                     .map(([k, v]) => `${this.getStatName(k)} ${v > 0 ? '+' : ''}${v}`)
                     .join(', ');
                 
+                let memoryClass = 'memory-' + memory.level;
+                let riskClass = 'risk-' + risk.level;
+                let comboClass = 'combo-' + combo.level;
+                
                 btn.innerHTML = `
-                    <div>${program.name}</div>
+                    <div class="program-name">${program.name}</div>
                     <div class="program-effects">${effectsText} | ⚡${program.power}</div>
+                    <div class="program-indicators">
+                        <span class="indicator ${memoryClass}" title="昨日记忆: ${memory.text}">
+                            🧠 ${memory.text}
+                        </span>
+                        <span class="indicator ${riskClass}" title="连播风险: ${risk.text}">
+                            ⚠️ ${risk.text}
+                        </span>
+                        <span class="indicator ${comboClass}" title="组合倾向: ${combo.desc}">
+                            ✨ ${combo.text}
+                        </span>
+                    </div>
                 `;
                 
                 btn.addEventListener('click', () => this.selectProgram(slot, program.id));
                 optionsContainer.appendChild(btn);
             });
+        });
+        
+        this.renderChainSummary();
+    }
 
-            const current = this.gameState.schedule[slot];
-            if (current) {
-                const program = GameData.programTypes.find(p => p.id === current);
-                slotDisplay.textContent = program ? program.name : '未安排';
-            } else {
-                slotDisplay.textContent = '未安排';
+    renderChainSummary() {
+        const summary = this.calculateChainEffects();
+        const container = document.getElementById('chainSummary');
+        if (!container) return;
+        
+        let effectsHtml = '';
+        Object.entries(summary.effects).forEach(([stat, value]) => {
+            if (value !== 0) {
+                const className = value > 0 ? 'positive' : 'negative';
+                const sign = value > 0 ? '+' : '';
+                effectsHtml += `<span class="effect-tag ${className}">${this.getStatName(stat)} ${sign}${value}</span>`;
             }
         });
+        
+        let combosHtml = '';
+        if (summary.combos.length > 0) {
+            combosHtml = '<div class="summary-section"><h4>✨ 触发组合</h4>';
+            summary.combos.forEach(combo => {
+                const prevProgram = GameData.programTypes.find(p => p.id === combo.prev);
+                const nextProgram = GameData.programTypes.find(p => p.id === combo.next);
+                combosHtml += `<div class="combo-item">
+                    <span>${prevProgram?.name || combo.prev} → ${nextProgram?.name || combo.next}</span>
+                    <small>${combo.desc}</small>
+                </div>`;
+            });
+            combosHtml += '</div>';
+        }
+        
+        let penaltiesHtml = '';
+        if (summary.penalties.length > 0) {
+            penaltiesHtml = '<div class="summary-section"><h4>⚠️ 重复惩罚</h4>';
+            summary.penalties.forEach(penalty => {
+                penaltiesHtml += `<div class="penalty-item">${penalty.name}</div>`;
+            });
+            penaltiesHtml += '</div>';
+        }
+        
+        container.innerHTML = `
+            <div class="summary-section">
+                <h4>📊 节目链总效果</h4>
+                <div class="summary-effects">${effectsHtml || '<span style="color:#888">无效果</span>'}</div>
+            </div>
+            ${combosHtml}
+            ${penaltiesHtml}
+        `;
     }
 
     renderBroadcasts() {
@@ -492,8 +614,206 @@ class UndergroundRadioGame {
         return names[stat] || stat;
     }
 
+    getYesterdayMemory(programId) {
+        const yesterday = this.gameState.yesterdaySchedule;
+        let count = 0;
+        ['morning', 'afternoon', 'evening'].forEach(slot => {
+            count += yesterday[slot].filter(p => p === programId).length;
+        });
+        if (count === 0) return { level: 'none', text: '无印象', count: 0 };
+        if (count === 1) return { level: 'light', text: '昨日播过', count: count };
+        if (count === 2) return { level: 'medium', text: '昨日热播', count: count };
+        return { level: 'heavy', text: '昨日轰炸', count: count };
+    }
+
+    getRepeatRisk(slot, programId, insertIndex = null) {
+        const currentChain = [...this.gameState.schedule[slot]];
+        if (insertIndex !== null) {
+            currentChain.splice(insertIndex, 0, programId);
+        } else {
+            currentChain.push(programId);
+        }
+
+        let riskScore = 0;
+        let sameProgramCount = 0;
+        let sameCategoryCount = 0;
+        const program = GameData.programTypes.find(p => p.id === programId);
+
+        for (let i = 0; i < currentChain.length; i++) {
+            if (currentChain[i] === programId) sameProgramCount++;
+            const p = GameData.programTypes.find(pr => pr.id === currentChain[i]);
+            if (p && program && p.category === program.category) sameCategoryCount++;
+        }
+
+        if (sameProgramCount > 1) riskScore += (sameProgramCount - 1) * 3;
+        if (sameCategoryCount > 1) riskScore += (sameCategoryCount - 1) * 1;
+
+        const allSlots = ['morning', 'afternoon', 'evening'];
+        const currentSlotIndex = allSlots.indexOf(slot);
+        for (let i = 0; i < currentSlotIndex; i++) {
+            const prevSlotPrograms = this.gameState.schedule[allSlots[i]];
+            if (prevSlotPrograms.length > 0) {
+                const lastProgram = prevSlotPrograms[prevSlotPrograms.length - 1];
+                if (lastProgram === programId) riskScore += 2;
+                const lastP = GameData.programTypes.find(p => p.id === lastProgram);
+                if (lastP && program && lastP.category === program.category) riskScore += 1;
+            }
+        }
+
+        if (riskScore === 0) return { level: 'safe', text: '安全', score: 0 };
+        if (riskScore <= 2) return { level: 'low', text: '低风险', score: riskScore };
+        if (riskScore <= 4) return { level: 'medium', text: '中风险', score: riskScore };
+        return { level: 'high', text: '高风险', score: riskScore };
+    }
+
+    getComboTendency(slot, programId, insertIndex = null) {
+        const currentChain = [...this.gameState.schedule[slot]];
+        let prevProgramId = null;
+        let nextProgramId = null;
+
+        if (insertIndex !== null) {
+            if (insertIndex > 0) prevProgramId = currentChain[insertIndex - 1];
+            if (insertIndex < currentChain.length) nextProgramId = currentChain[insertIndex];
+        } else {
+            if (currentChain.length > 0) prevProgramId = currentChain[currentChain.length - 1];
+        }
+
+        if (!prevProgramId && slot !== 'morning') {
+            const allSlots = ['morning', 'afternoon', 'evening'];
+            const currentSlotIndex = allSlots.indexOf(slot);
+            for (let i = currentSlotIndex - 1; i >= 0; i--) {
+                const prevSlotPrograms = this.gameState.schedule[allSlots[i]];
+                if (prevSlotPrograms.length > 0) {
+                    prevProgramId = prevSlotPrograms[prevSlotPrograms.length - 1];
+                    break;
+                }
+            }
+        }
+
+        let bestCombo = null;
+        let comboEffects = { bonus: 0, desc: '' };
+
+        if (prevProgramId) {
+            const combo = GameData.programCombos.find(c => c.prev === prevProgramId && c.next === programId);
+            if (combo) {
+                bestCombo = combo;
+                const totalBonus = Object.values(combo.effects).reduce((a, b) => a + Math.abs(b), 0);
+                comboEffects = { bonus: totalBonus, desc: combo.desc, direction: 'prev' };
+            }
+        }
+
+        if (nextProgramId) {
+            const combo = GameData.programCombos.find(c => c.prev === programId && c.next === nextProgramId);
+            if (combo) {
+                const totalBonus = Object.values(combo.effects).reduce((a, b) => a + Math.abs(b), 0);
+                if (!bestCombo || totalBonus > comboEffects.bonus) {
+                    bestCombo = combo;
+                    comboEffects = { bonus: totalBonus, desc: combo.desc, direction: 'next' };
+                }
+            }
+        }
+
+        if (comboEffects.bonus >= 5) return { level: 'excellent', text: '绝佳搭配', ...comboEffects };
+        if (comboEffects.bonus >= 3) return { level: 'good', text: '良好组合', ...comboEffects };
+        if (comboEffects.bonus > 0) return { level: 'fine', text: '还行', ...comboEffects };
+        return { level: 'none', text: '普通', bonus: 0, desc: '无特殊效果' };
+    }
+
+    calculateChainEffects() {
+        const totalEffects = {
+            power: 0, noise: 0, rumor: 0, fatigue: 0, morale: 0, trust: 0
+        };
+        const comboList = [];
+        const penaltyList = [];
+
+        const allSlots = ['morning', 'afternoon', 'evening'];
+        const fullChain = [];
+
+        allSlots.forEach(slot => {
+            this.gameState.schedule[slot].forEach(programId => {
+                fullChain.push({ programId, slot });
+                const program = GameData.programTypes.find(p => p.id === programId);
+                if (program) {
+                    totalEffects.power -= program.power;
+                    Object.entries(program.effects).forEach(([k, v]) => {
+                        if (totalEffects[k] !== undefined) {
+                            totalEffects[k] += v;
+                        }
+                    });
+                }
+            });
+        });
+
+        const seenPrograms = {};
+        const seenCategories = {};
+        for (let i = 0; i < fullChain.length; i++) {
+            const programId = fullChain[i].programId;
+            const program = GameData.programTypes.find(p => p.id === programId);
+            if (!program) continue;
+
+            if (seenPrograms[programId]) {
+                Object.entries(GameData.repeatPenalty.sameProgram).forEach(([k, v]) => {
+                    totalEffects[k] += v;
+                });
+                penaltyList.push({ type: 'sameProgram', name: program.name });
+            }
+            seenPrograms[programId] = true;
+
+            if (seenCategories[program.category] && seenCategories[program.category] !== programId) {
+                Object.entries(GameData.repeatPenalty.sameCategory).forEach(([k, v]) => {
+                    totalEffects[k] += v;
+                });
+                penaltyList.push({ type: 'sameCategory', name: `${GameData.categoryNames[program.category]}重复` });
+            }
+            seenCategories[program.category] = programId;
+
+            if (i > 0) {
+                const prevProgramId = fullChain[i - 1].programId;
+                const combo = GameData.programCombos.find(c => c.prev === prevProgramId && c.next === programId);
+                if (combo) {
+                    Object.entries(combo.effects).forEach(([k, v]) => {
+                        if (totalEffects[k] !== undefined) {
+                            totalEffects[k] += v;
+                        }
+                    });
+                    comboList.push(combo);
+                }
+            }
+        }
+
+        return { effects: totalEffects, combos: comboList, penalties: penaltyList };
+    }
+
     selectProgram(slot, programId) {
-        this.gameState.schedule[slot] = programId;
+        const schedule = this.gameState.schedule[slot];
+        const index = schedule.indexOf(programId);
+        
+        if (index !== -1) {
+            schedule.splice(index, 1);
+        } else {
+            if (schedule.length >= this.gameState.maxProgramsPerSlot) {
+                this.showEvent('节目已满', `每个时段最多安排 ${this.gameState.maxProgramsPerSlot} 个节目。`, []);
+                return;
+            }
+            schedule.push(programId);
+        }
+        this.renderSchedule();
+    }
+
+    moveProgram(slot, fromIndex, direction) {
+        const schedule = this.gameState.schedule[slot];
+        const toIndex = fromIndex + direction;
+        if (toIndex < 0 || toIndex >= schedule.length) return;
+        
+        const temp = schedule[fromIndex];
+        schedule[fromIndex] = schedule[toIndex];
+        schedule[toIndex] = temp;
+        
+        this.renderSchedule();
+    }
+
+    removeProgram(slot, index) {
+        this.gameState.schedule[slot].splice(index, 1);
         this.renderSchedule();
     }
 
@@ -685,26 +1005,16 @@ class UndergroundRadioGame {
             rumor: 0,
             fatigue: 0,
             morale: 0,
-            food: 0
+            food: 0,
+            trust: 0
         };
 
-        let totalPowerUsed = 0;
-        ['morning', 'afternoon', 'evening'].forEach(slot => {
-            const programId = this.gameState.schedule[slot];
-            if (programId) {
-                const program = GameData.programTypes.find(p => p.id === programId);
-                if (program) {
-                    totalPowerUsed += program.power;
-                    Object.entries(program.effects).forEach(([k, v]) => {
-                        if (dayEffects[k] !== undefined) {
-                            dayEffects[k] += v;
-                        }
-                    });
-                }
+        const chainResult = this.calculateChainEffects();
+        Object.entries(chainResult.effects).forEach(([k, v]) => {
+            if (dayEffects[k] !== undefined) {
+                dayEffects[k] += v;
             }
         });
-
-        dayEffects.power -= totalPowerUsed;
 
         const survivorCount = this.gameState.survivors.length;
         dayEffects.food -= survivorCount;
@@ -759,7 +1069,11 @@ class UndergroundRadioGame {
         }
 
         Object.entries(dayEffects).forEach(([k, v]) => {
-            if (k !== 'food' && this.gameState.status[k] !== undefined) {
+            if (k === 'trust') {
+                this.gameState.districts.forEach(d => {
+                    d.trust = Math.max(0, Math.min(100, d.trust + v));
+                });
+            } else if (k !== 'food' && this.gameState.status[k] !== undefined) {
                 this.gameState.status[k] = Math.max(0, Math.min(100, this.gameState.status[k] + v));
             }
         });
@@ -777,8 +1091,14 @@ class UndergroundRadioGame {
 
         this.showSettlementModal(dayEffects, summary);
 
+        this.gameState.yesterdaySchedule = {
+            morning: [...this.gameState.schedule.morning],
+            afternoon: [...this.gameState.schedule.afternoon],
+            evening: [...this.gameState.schedule.evening]
+        };
+
         this.gameState.day++;
-        this.gameState.schedule = { morning: null, afternoon: null, evening: null };
+        this.gameState.schedule = { morning: [], afternoon: [], evening: [] };
         this.gameState.selectedBroadcast = null;
         this.gameState.currentQuestion = null;
         this.gameState.todayActions = {

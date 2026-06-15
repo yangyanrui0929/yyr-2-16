@@ -1,15 +1,41 @@
-// ??????????????????????????????
+// 游戏核心数据定义
 const GameData = {
     programTypes: [
-        { id: 'music', name: '🎵 音乐节目', effects: { morale: 5, noise: 3, fatigue: -2 }, power: 5, desc: '播放轻松音乐' },
-        { id: 'news', name: '📰 新闻播报', effects: { morale: 3, rumor: -5, trust: 5 }, power: 8, desc: '播报真实新闻' },
-        { id: 'story', name: '📖 故事时间', effects: { morale: 8, fatigue: -5 }, power: 4, desc: '讲述精彩故事' },
-        { id: 'education', name: '📚 知识讲座', effects: { morale: 4, trust: 8 }, power: 6, desc: '科普生存知识' },
-        { id: 'interview', name: '🎙️ 幸存者访谈', effects: { morale: 6, trust: 10, rumor: -8 }, power: 10, desc: '采访幸存者' },
-        { id: 'weather', name: '🌤️ 天气预报', effects: { morale: 2, trust: 3 }, power: 3, desc: '播报天气情况' },
-        { id: 'silent', name: '🔇 静默时段', effects: { fatigue: -10, noise: -10 }, power: 1, desc: '关闭广播休息' },
-        { id: 'emergency', name: '🚨 紧急广播', effects: { morale: -5, rumor: -15, trust: 15 }, power: 15, desc: '发布紧急通知' }
+        { id: 'music', name: '🎵 音乐节目', category: 'entertainment', effects: { morale: 5, noise: 3, fatigue: -2 }, power: 5, desc: '播放轻松音乐' },
+        { id: 'news', name: '📰 新闻播报', category: 'news', effects: { morale: 3, rumor: -5, trust: 5 }, power: 8, desc: '播报真实新闻' },
+        { id: 'story', name: '📖 故事时间', category: 'entertainment', effects: { morale: 8, fatigue: -5 }, power: 4, desc: '讲述精彩故事' },
+        { id: 'education', name: '📚 知识讲座', category: 'education', effects: { morale: 4, trust: 8 }, power: 6, desc: '科普生存知识' },
+        { id: 'interview', name: '🎙️ 幸存者访谈', category: 'interview', effects: { morale: 6, trust: 10, rumor: -8 }, power: 10, desc: '采访幸存者' },
+        { id: 'weather', name: '🌤️ 天气预报', category: 'education', effects: { morale: 2, trust: 3 }, power: 3, desc: '播报天气情况' },
+        { id: 'silent', name: '🔇 静默时段', category: 'rest', effects: { fatigue: -10, noise: -10 }, power: 1, desc: '关闭广播休息' },
+        { id: 'emergency', name: '🚨 紧急广播', category: 'news', effects: { morale: -5, rumor: -15, trust: 15 }, power: 15, desc: '发布紧急通知' }
     ],
+
+    categoryNames: {
+        news: '新闻类',
+        education: '教育类',
+        entertainment: '娱乐类',
+        interview: '访谈类',
+        rest: '休息类'
+    },
+
+    programCombos: [
+        { prev: 'news', next: 'education', effects: { trust: 3, morale: 2 }, desc: '新闻后接知识讲座，建立权威信任感' },
+        { prev: 'emergency', next: 'story', effects: { morale: 5, fatigue: -3 }, desc: '紧急广播后接故事，缓冲恐慌情绪' },
+        { prev: 'education', next: 'music', effects: { morale: 3, fatigue: -2 }, desc: '知识讲座后接音乐，轻松过渡' },
+        { prev: 'story', next: 'interview', effects: { trust: 3, morale: 2 }, desc: '故事后接访谈，引发情感共鸣' },
+        { prev: 'music', next: 'news', effects: { fatigue: -2 }, desc: '音乐后接新闻，提神醒脑' },
+        { prev: 'interview', next: 'weather', effects: { trust: 2 }, desc: '访谈后接天气预报，延续专业感' },
+        { prev: 'news', next: 'story', effects: { morale: 3 }, desc: '新闻后接故事，舒缓紧张情绪' },
+        { prev: 'emergency', next: 'music', effects: { morale: 4 }, desc: '紧急广播后接音乐，平复心情' },
+        { prev: 'weather', next: 'education', effects: { trust: 2 }, desc: '天气预报后接知识，实用信息链' },
+        { prev: 'silent', next: 'music', effects: { morale: 2, fatigue: -2 }, desc: '静默后接音乐，温柔唤醒' }
+    ],
+
+    repeatPenalty: {
+        sameProgram: { fatigue: 8, morale: -5 },
+        sameCategory: { fatigue: 4, morale: -2 }
+    },
 
     questionBank: [
         {
