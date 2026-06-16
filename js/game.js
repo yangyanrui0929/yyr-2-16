@@ -111,13 +111,39 @@ class UndergroundRadioGame {
         if (saved) {
             try {
                 this.gameState = JSON.parse(saved);
+                this.migrateGameState();
                 this.showEvent('读取存档', '成功读取游戏存档！', []);
             } catch (e) {
                 this.gameState = this.getDefaultState();
+                this.generateDailyRumors();
             }
         } else {
             this.gameState = this.getDefaultState();
             this.generateDailyRumors();
+        }
+    }
+
+    migrateGameState() {
+        ['schedule', 'yesterdaySchedule'].forEach(key => {
+            if (!this.gameState[key]) {
+                this.gameState[key] = { morning: [], afternoon: [], evening: [] };
+            } else {
+                ['morning', 'afternoon', 'evening'].forEach(slot => {
+                    const val = this.gameState[key][slot];
+                    if (Array.isArray(val)) {
+                    } else if (val === null || val === undefined) {
+                        this.gameState[key][slot] = [];
+                    } else if (typeof val === 'string') {
+                        this.gameState[key][slot] = [val];
+                    } else {
+                        this.gameState[key][slot] = [];
+                    }
+                });
+            }
+        });
+
+        if (this.gameState.maxProgramsPerSlot === undefined) {
+            this.gameState.maxProgramsPerSlot = 3;
         }
     }
 
@@ -286,6 +312,14 @@ class UndergroundRadioGame {
             optionsContainer.innerHTML = '';
             chainContainer.innerHTML = '';
             
+            if (!Array.isArray(this.gameState.schedule[slot])) {
+                if (typeof this.gameState.schedule[slot] === 'string') {
+                    this.gameState.schedule[slot] = [this.gameState.schedule[slot]];
+                } else {
+                    this.gameState.schedule[slot] = [];
+                }
+            }
+            
             const currentChain = this.gameState.schedule[slot];
             
             if (currentChain.length === 0) {
@@ -310,12 +344,18 @@ class UndergroundRadioGame {
                         }
                     }
                     
+                    let repeatIndicator = '';
+                    if (index > 0 && currentChain[index - 1] === programId) {
+                        repeatIndicator = `<div class="chain-repeat-badge" title="连续重复播放，增加听众疲劳">⚠️ 连播</div>`;
+                    }
+                    
                     chainItem.innerHTML = `
                         <div class="chain-order">${index + 1}</div>
                         <div class="chain-info">
                             <div class="chain-name">${program.name}</div>
                             <div class="chain-effects">⚡${program.power}</div>
                             ${comboIndicator}
+                            ${repeatIndicator}
                         </div>
                         <div class="chain-actions">
                             <button class="chain-btn" data-action="up" title="上移">↑</button>
@@ -342,9 +382,13 @@ class UndergroundRadioGame {
                 const btn = document.createElement('button');
                 btn.className = 'program-btn';
                 
-                const isSelected = currentChain.includes(program.id);
+                const occurrenceCount = currentChain.filter(p => p === program.id).length;
+                const isSelected = occurrenceCount > 0;
                 if (isSelected) {
                     btn.classList.add('selected');
+                    if (occurrenceCount > 1) {
+                        btn.classList.add('multiple');
+                    }
                 }
                 
                 const memory = this.getYesterdayMemory(program.id);
@@ -359,8 +403,16 @@ class UndergroundRadioGame {
                 let riskClass = 'risk-' + risk.level;
                 let comboClass = 'combo-' + combo.level;
                 
+                let countBadge = '';
+                if (occurrenceCount > 0) {
+                    countBadge = `<span class="program-count" title="已添加 ${occurrenceCount} 次">×${occurrenceCount}</span>`;
+                }
+                
                 btn.innerHTML = `
-                    <div class="program-name">${program.name}</div>
+                    <div class="program-header">
+                        <div class="program-name">${program.name}</div>
+                        ${countBadge}
+                    </div>
                     <div class="program-effects">${effectsText} | ⚡${program.power}</div>
                     <div class="program-indicators">
                         <span class="indicator ${memoryClass}" title="昨日记忆: ${memory.text}">
@@ -618,7 +670,12 @@ class UndergroundRadioGame {
         const yesterday = this.gameState.yesterdaySchedule;
         let count = 0;
         ['morning', 'afternoon', 'evening'].forEach(slot => {
-            count += yesterday[slot].filter(p => p === programId).length;
+            const slotData = yesterday[slot];
+            if (Array.isArray(slotData)) {
+                count += slotData.filter(p => p === programId).length;
+            } else if (typeof slotData === 'string' && slotData === programId) {
+                count += 1;
+            }
         });
         if (count === 0) return { level: 'none', text: '无印象', count: 0 };
         if (count === 1) return { level: 'light', text: '昨日播过', count: count };
@@ -786,17 +843,13 @@ class UndergroundRadioGame {
 
     selectProgram(slot, programId) {
         const schedule = this.gameState.schedule[slot];
-        const index = schedule.indexOf(programId);
         
-        if (index !== -1) {
-            schedule.splice(index, 1);
-        } else {
-            if (schedule.length >= this.gameState.maxProgramsPerSlot) {
-                this.showEvent('节目已满', `每个时段最多安排 ${this.gameState.maxProgramsPerSlot} 个节目。`, []);
-                return;
-            }
-            schedule.push(programId);
+        if (schedule.length >= this.gameState.maxProgramsPerSlot) {
+            this.showEvent('节目已满', `每个时段最多安排 ${this.gameState.maxProgramsPerSlot} 个节目。`, []);
+            return;
         }
+        
+        schedule.push(programId);
         this.renderSchedule();
     }
 

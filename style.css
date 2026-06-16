@@ -420,6 +420,48 @@ body {
     font-weight: bold;
 }
 
+.chain-repeat-badge {
+    display: inline-block;
+    margin-top: 4px;
+    margin-left: 4px;
+    padding: 2px 6px;
+    background: rgba(231, 76, 60, 0.2);
+    color: #e74c3c;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.program-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.program-count {
+    display: inline-block;
+    padding: 1px 6px;
+    background: #e94560;
+    color: #fff;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.program-btn.selected {
+    background: rgba(52, 152, 219, 0.4);
+    color: #fff;
+    border-color: #3498db;
+    box-shadow: 0 0 10px rgba(52, 152, 219, 0.3);
+}
+
+.program-btn.selected.multiple {
+    background: rgba(233, 69, 96, 0.4);
+    border-color: #e94560;
+    box-shadow: 0 0 10px rgba(233, 69, 96, 0.3);
+}
+
 .chain-actions {
     display: flex;
     gap: 4px;
@@ -494,13 +536,6 @@ body {
 .indicator.combo-fine { color: #3498db; background: rgba(52, 152, 219, 0.15); }
 .indicator.combo-good { color: #2ecc71; background: rgba(46, 204, 113, 0.15); }
 .indicator.combo-excellent { color: #9b59b6; background: rgba(155, 89, 182, 0.15); }
-
-.program-btn.selected {
-    background: rgba(52, 152, 219, 0.4);
-    color: #fff;
-    border-color: #3498db;
-    box-shadow: 0 0 10px rgba(52, 152, 219, 0.3);
-}
 
 .chain-summary {
     margin-top: 20px;
